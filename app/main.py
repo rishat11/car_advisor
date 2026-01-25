@@ -22,18 +22,14 @@ async def lifespan(app: FastAPI):
     """
     Управляет жизненным циклом приложения.
     Выполняет инициализацию при запуске и очистку при завершении.
+    В serverless среде не пытаемся подключаться к БД при запуске.
     """
     # Startup
     logger.info("🚀 Запуск Car Advisor API...")
 
-    # Проверяем подключение к базе данных
-    db_connected = await check_db_connection()
-    if db_connected:
-        logger.info("✅ Подключение к базе данных успешно")
-        app.state.db_connected = True
-    else:
-        logger.error("❌ Не удалось подключиться к базе данных")
-        app.state.db_connected = False
+    # Не пытаемся подключаться к БД при запуске в serverless среде
+    # Подключение будет выполнено при первом обращении к БД
+    app.state.db_connected = None  # Состояние неизвестно до первого обращения
 
     yield  # Здесь работает приложение
 
@@ -98,13 +94,14 @@ async def root():
         "message": "Car Advisor API",
         "status": "running",
         "version": settings.VERSION,
-        "db_connected": getattr(app.state, 'db_connected', False)
+        "db_connected": getattr(app.state, 'db_connected', 'unknown')
     }
 
 # Health check эндпоинт для диагностики
 @app.get("/health")
 async def health():
-    db_status = getattr(app.state, 'db_connected', False)
+    # Проверяем подключение к БД при необходимости
+    db_status = await check_db_connection()
     return {
         "status": "ok",
         "service": "car-advisor-api",
