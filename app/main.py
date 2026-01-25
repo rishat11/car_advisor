@@ -3,30 +3,44 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 import json
+import logging
 
-# Ваш код импортов
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Импорты
 from app.api.routers import auth, users, cars, chat
 from app.core.config import settings
-from app.db.session import engine
+from app.database import check_db_connection
 from app.models import Base
 import asyncio
 
-# Создание таблиц
-async def create_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-# Lifecycle
+# Lifecycle manager для FastAPI
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Управляет жизненным циклом приложения.
+    Выполняет инициализацию при запуске и очистку при завершении.
+    """
     # Startup
-    print("🚀 Запуск Car Advisor API...")
-    await create_tables()
-    yield
-    # Shutdown
-    print("👋 Остановка Car Advisor API...")
+    logger.info("🚀 Запуск Car Advisor API...")
 
-# Создаем приложение
+    # Проверяем подключение к базе данных
+    db_connected = await check_db_connection()
+    if db_connected:
+        logger.info("✅ Подключение к базе данных успешно")
+        app.state.db_connected = True
+    else:
+        logger.error("❌ Не удалось подключиться к базе данных")
+        app.state.db_connected = False
+
+    yield  # Здесь работает приложение
+
+    # Shutdown
+    logger.info("👋 Остановка Car Advisor API...")
+
+# Создаем приложение FastAPI с lifecycle manager
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
@@ -37,7 +51,7 @@ app = FastAPI(
 )
 
 # ✅✅✅ ВАЖНО: CORS Middleware ДОЛЖЕН БЫТЬ ПЕРВЫМ!
-# Добавляем ПРОСТОЙ И РАБОЧИЙ CORS
+# Добавляем CORS для Vercel и локальной разработки
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Разрешаем ВСЕ источники для теста
@@ -60,30 +74,42 @@ async def add_cors_headers(request: Request, call_next):
         )
     else:
         response = await call_next(request)
-    
+
     # Добавляем CORS заголовки ко ВСЕМ ответам
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
     response.headers["Access-Control-Allow-Headers"] = "*"
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Max-Age"] = "600"
-    
+
     return response
 
 # Подключаем роутеры (ПОСЛЕ CORS!)
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+# Изменяем префикс для auth на /api/v1, а не /api/v1/auth
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(cars.router, prefix="/api/v1", tags=["cars"])
 app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 
-# Health check эндпоинты
+# Главная страница
 @app.get("/")
 async def root():
-    return {"message": "Car Advisor API", "status": "running", "version": settings.VERSION}
+    return {
+        "message": "Car Advisor API",
+        "status": "running",
+        "version": settings.VERSION,
+        "db_connected": getattr(app.state, 'db_connected', False)
+    }
 
+# Health check эндпоинт для диагностики
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "car-advisor-api"}
+    db_status = getattr(app.state, 'db_connected', False)
+    return {
+        "status": "ok",
+        "service": "car-advisor-api",
+        "database": "connected" if db_status else "disconnected"
+    }
 
 # CORS тестовый эндпоинт
 @app.options("/{path:path}")
