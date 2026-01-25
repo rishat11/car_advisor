@@ -1,8 +1,5 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import uvicorn
-import json
 import logging
 
 # Настройка логирования
@@ -14,36 +11,14 @@ from app.api.routers import auth, users, cars, chat
 from app.core.config import settings
 from app.database import check_db_connection
 from app.models import Base
-import asyncio
 
-# Lifecycle manager для FastAPI
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Управляет жизненным циклом приложения.
-    Выполняет инициализацию при запуске и очистку при завершении.
-    В serverless среде не пытаемся подключаться к БД при запуске.
-    """
-    # Startup
-    logger.info("🚀 Запуск Car Advisor API...")
-
-    # Не пытаемся подключаться к БД при запуске в serverless среде
-    # Подключение будет выполнено при первом обращении к БД
-    app.state.db_connected = None  # Состояние неизвестно до первого обращения
-
-    yield  # Здесь работает приложение
-
-    # Shutdown
-    logger.info("👋 Остановка Car Advisor API...")
-
-# Создаем приложение FastAPI с lifecycle manager
+# Создаем приложение FastAPI БЕЗ lifespan для serverless
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Car Advisor API - A chat-based car recommendation service",
     docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan
+    redoc_url="/redoc"
 )
 
 # ✅✅✅ ВАЖНО: CORS Middleware ДОЛЖЕН БЫТЬ ПЕРВЫМ!
@@ -58,30 +33,7 @@ app.add_middleware(
     max_age=600,
 )
 
-# ✅ Дополнительно: ручной CORS middleware для надежности
-@app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
-    # Обрабатываем OPTIONS (preflight) запросы
-    if request.method == "OPTIONS":
-        response = Response(
-            content=json.dumps({"message": "CORS preflight OK"}),
-            status_code=200,
-            media_type="application/json"
-        )
-    else:
-        response = await call_next(request)
-
-    # Добавляем CORS заголовки ко ВСЕМ ответам
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Max-Age"] = "600"
-
-    return response
-
 # Подключаем роутеры (ПОСЛЕ CORS!)
-# Изменяем префикс для auth на /api/v1, а не /api/v1/auth
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(cars.router, prefix="/api/v1", tags=["cars"])
@@ -93,8 +45,7 @@ async def root():
     return {
         "message": "Car Advisor API",
         "status": "running",
-        "version": settings.VERSION,
-        "db_connected": getattr(app.state, 'db_connected', 'unknown')
+        "version": settings.VERSION
     }
 
 # Health check эндпоинт для диагностики
@@ -108,24 +59,9 @@ async def health():
         "database": "connected" if db_status else "disconnected"
     }
 
-# CORS тестовый эндпоинт
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    """Обработчик OPTIONS запросов для CORS"""
-    return {"message": "CORS preflight request handled"}
-
-@app.get("/cors-test")
-async def cors_test(request: Request):
-    """Тестовый эндпоинт для проверки CORS"""
-    return {
-        "cors_working": True,
-        "request_origin": request.headers.get("origin"),
-        "allowed_origins": ["*"],
-        "timestamp": "2024-01-01T00:00:00Z"
-    }
-
-# Запуск приложения
+# Запуск приложения (только для локальной разработки)
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(
         "main:app",
         host="0.0.0.0",  # ВАЖНО: 0.0.0.0, не localhost!

@@ -1,5 +1,7 @@
+import os
+import sys
 from app.main import app
-from mangum import Mangum
 
-# Оборачиваем FastAPI приложение для AWS Lambda
-handler = Mangum(app)
+# Для Vercel нужно экспортировать приложение как 'app'
+# Это позволяет Vercel правильно распознать ASGI приложение
+handler = app
