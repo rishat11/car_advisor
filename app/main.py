@@ -9,8 +9,6 @@ logger = logging.getLogger(__name__)
 # Импорты
 from app.api.routers import auth, users, cars, chat
 from app.core.config import settings
-from app.database import check_db_connection
-from app.models import Base
 
 # Создаем приложение FastAPI БЕЗ lifespan для serverless
 app = FastAPI(
@@ -51,12 +49,12 @@ async def root():
 # Health check эндпоинт для диагностики
 @app.get("/health")
 async def health():
-    # Проверяем подключение к БД при необходимости
-    db_status = await check_db_connection()
+    # В serverless среде не проверяем подключение к БД при каждом запросе
+    # Проверка будет выполняться только при необходимости в роутах
     return {
         "status": "ok",
         "service": "car-advisor-api",
-        "database": "connected" if db_status else "disconnected"
+        "database": "serverless-mode"
     }
 
 # Запуск приложения (только для локальной разработки)
