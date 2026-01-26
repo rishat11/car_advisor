@@ -1,8 +1,11 @@
 {
   "version": 2,
   "functions": {
+    "api/index.py": {
+      "runtime": "@vercel/python@4.2.0"
+    },
     "api/[path].py": {
-      "runtime": "python3.12"
+      "runtime": "@vercel/python@4.2.0"
     }
   },
   "routes": [
@@ -10,9 +13,5 @@
       "src": "/(.*)",
       "dest": "/api/[path].py"
     }
-  ],
-  "env": {
-    "PYTHONUNBUFFERED": "1",
-    "VERCEL": "1"
-  }
+  ]
 }
