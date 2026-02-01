@@ -9,14 +9,18 @@ const nextConfig = {
   },
   // Удали rewrites для production
   async rewrites() {
-    if (process.env.NODE_ENV === 'development') {
+    // Проверяем, является ли среда development (по наличию переменной NEXT_PUBLIC_BACKEND_URL или другой индикации)
+    const isDevelopment = !process.env.RAILWAY || process.env.NODE_ENV === 'development';
+
+    if (isDevelopment) {
       return [
         {
           source: '/api/:path*',
-          destination: 'http://localhost:8000/api/:path*',
+          destination: `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/:path*`,
         },
       ];
     }
+    // В production оставляем пустой массив rewrites
     return [];
   },
 };
